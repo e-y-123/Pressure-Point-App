@@ -1,0 +1,41 @@
+Home Screen (Face Mode)
+  - "Face Pressure Points" selected
+  - Prompt: "What face-related issue are you experiencing?"
+  ↓
+User Input Screen
+  ├── Type your problem
+  │     Examples: "Tension headache", "Sinus pressure", "Jaw pain", 
+  │             "Eye strain", "Migraine", "Toothache"
+  └── Voice Input (microphone icon)
+         ↓
+AI Processing
+  - Analyzes the symptom
+  - Selects 1–3 relevant face/head pressure points
+  - Creates custom response
+         ↓
+Result Screen (Face Focus)
+  ├── Custom AI Response
+  │     • Clear explanation of why these points help
+  │     • Recommended pressure points (e.g. GB20, Yintang, LI20, ST2)
+  │     • How to locate and press them (time, pressure, motion)
+  │     • Breathing tips and safety notes
+  │     • Disclaimer: Not medical advice
+  │
+  ├── Pre-set Face Diagram
+  │     • Front-view face/head illustration (primary)
+  │     • Side-view if needed (for temple or jaw)
+  │     • Highlighted / circled pressure point(s)
+  │     • Labels with point names and locations
+  │     • Zoomable image
+  │     • Optional arrows for finger placement
+  │
+  └── Action Buttons
+        • Start Pressing Timer
+        • Save to Favorites
+        • Show Another Point
+        • New Query
+        • Back to Home
+         ↓
+Loop Back
+  - Return to User Input Screen for new face issue
+  - Or go back to main Home
