@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin: 0; overflow: hidden; background: black; }
+  video, canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw;
+    height: auto;
+  }
+
+  #ui {
+    position: absolute;
+    top: 10px; left: 0; right: 0;
+    z-index: 10;
+    text-align: center;
+    font-family: Arial, sans-serif;
+    pointer-events: none;
+  }
+
+  #status {
+    color: white;
+    font-size: 20px;
+    background: rgba(0,0,0,0.5);
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    margin-bottom: 8px;
+  }
+
+  #timer-box {
+    color: white;
+    font-size: 48px;
+    font-weight: bold;
+    background: rgba(0,0,0,0.6);
+    display: inline-block;
+    padding: 10px 24px;
+    border-radius: 20px;
+    margin-top: 6px;
+  }
+
+  #message {
+    color: #FFD700;
+    font-size: 18px;
+    margin-top: 8px;
+    background: rgba(0,0,0,0.5);
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 14px;
+  }
+</style>
+</head>
+<body>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+
+<div id="ui">
+  <div id="status">⏳ Waiting for face...</div>
+  <br>
+  <div id="timer-box">45</div>
+  <br>
+  <div id="message"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const video     = document.getElementById("video");
+const canvas    = document.getElementById("canvas");
+const ctx       = canvas.getContext("2d");
+const statusEl  = document.getElementById("status");
+const timerEl   = document.getElementById("timer-box");
+const messageEl = document.getElementById("message");
+
+// ─── STATE ──────────────────────────────────────────────────
+let Active         = false;
+let Finished       = false;
+let Paused         = false;
+let seconds        = 45;
+let faceVisible    = false;
+let exerciseActive = false;
+let timerInterval  = null;
+let lastSent       = "";
+
+// ─── HELPERS ────────────────────────────────────────────────
+function sendToApp(msg) {
+  if (window.AppInventor && msg !== lastSent) {
+    window.AppInventor.setWebViewString(msg);
+    lastSent = msg;
+  }
+}
+
+function speak(text) {
+  if (window.speechSynthesis) {
+    const u = new SpeechSynthesisUtterance(text);
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }
+}
+
+function setMessage(text) { messageEl.textContent = text; }
+function updateTimer()    { timerEl.textContent = seconds; }
+
+// ─── TIMER ──────────────────────────────────────────────────
+function startTimer() {
+  stopTimer();
+  seconds = 45;
+  updateTimer();
+
+  timerInterval = setInterval(() => {
+    seconds -= 1;
+    updateTimer();
+
+    if (seconds <= 0) {
+      stopTimer();
+      Active   = false;
+      Finished = true;
+      speak("Good Job, Massage is finished");
+      setMessage("✅ Good Job, Massage is finished");
+      statusEl.textContent = "🎉 Finished!";
+      sendToApp("EXERCISE_DONE");
+    }
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+// ─── FACE EVENTS ────────────────────────────────────────────
+function onFaceDetected() {
+  if (faceVisible) return;
+  faceVisible = true;
+  sendToApp("FACE_DETECTED");
+  Paused = false;
+  statusEl.textContent = "😊 Face detected";
+  if (exerciseActive && !Finished) {
+    startTimer();
+    speak("Continue");
+    setMessage("Continue on this area for 45 seconds");
+    sendToApp("EXERCISE_START");
+  }
+}
+
+function onFaceLost() {
+  if (!faceVisible) return;
+  faceVisible = false;
+  sendToApp("FACE_LOST");
+  Paused = true;
+  stopTimer();
+  statusEl.textContent = "❌ Face lost";
+  speak("I can't see you, can you move into frame");
+  setMessage("I can't see you, can you move into frame");
+}
+
+function startExercise() {
+  if (exerciseActive || Finished) return;
+  exerciseActive = true;
+  Active  = true;
+  seconds = 45;
+  sendToApp("EXERCISE_START");
+  speak("Continue on this area for 45 seconds");
+  setMessage("Continue on this area for 45 seconds");
+  statusEl.textContent = "🟢 Exercise started";
+  startTimer();
+}
+
+// ─── FACEMESH ───────────────────────────────────────────────
+const faceMesh = new FaceMesh({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+});
+
+faceMesh.setOptions({
+  maxNumFaces: 1,
+  refineLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+faceMesh.onResults((results) => {
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const hasface = results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0;
+
+  if (!hasface) { onFaceLost(); return; }
+
+  onFaceDetected();
+  if (!exerciseActive && !Finished) startExercise();
+
+  const lm = results.multiFaceLandmarks[0];
+
+  // ✅ 攒竹穴: inner eyebrow closer to nose
+  // #107 left, #336 right — inner eyebrow above inner eye corner
+  const left  = lm[107];
+  const right = lm[336];
+
+  const leftX  = left.x  * canvas.width;
+  const leftY  = left.y  * canvas.height;
+  const rightX = right.x * canvas.width;
+  const rightY = right.y * canvas.height;
+
+  // ✅ Smaller dots (radius 5 instead of 10)
+  ctx.fillStyle = "red";
+
+  ctx.beginPath();
+  ctx.arc(leftX, leftY, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(rightX, rightY, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Send coordinates to App Inventor
+  const msg = `CUANZHU:${Math.round(leftX)}:${Math.round(leftY)}:${Math.round(rightX)}:${Math.round(rightY)}`;
+  sendToApp(msg);
+});
+
+// ─── CAMERA ─────────────────────────────────────────────────
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await faceMesh.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
+
+camera.start();
+</script>
+
+</body>
+</html>
